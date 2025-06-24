@@ -19,6 +19,18 @@ class FrequencyStrategy(ABC):
         pass
 
 
+class SpamStrategy(FrequencyStrategy):
+    """Strategy for spam frequency calculations (every minute)"""
+    
+    @property
+    def frequency(self) -> FrequencyEnum:
+        return FrequencyEnum.SPAM
+    
+    def calculate_next_execution(self, current_time: datetime) -> datetime:
+        """Calculate next execution time for spam frequency (every minute)"""
+        return current_time + timedelta(minutes=1)
+
+
 class HourlyStrategy(FrequencyStrategy):
     """Strategy for hourly frequency calculations"""
     
@@ -92,6 +104,7 @@ class MonthlyStrategy(FrequencyStrategy):
 def get_frequency_strategy(frequency: FrequencyEnum) -> FrequencyStrategy:
     """Factory function to get appropriate frequency strategy"""
     strategy_map = {
+        FrequencyEnum.SPAM: SpamStrategy,
         FrequencyEnum.HOURLY: HourlyStrategy,
         FrequencyEnum.DAILY: DailyStrategy,
         FrequencyEnum.WEEKLY: WeeklyStrategy,

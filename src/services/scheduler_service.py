@@ -18,6 +18,13 @@ class SchedulerService:
         self._task: Optional[asyncio.Task] = None
         self._check_interval = self.settings.scheduling.check_interval_minutes * 60  # Convert to seconds
         self.is_running = False
+        
+        # Debug logging for config values
+        logger.info(
+            "SchedulerService initialized",
+            check_interval_minutes=self.settings.scheduling.check_interval_minutes,
+            check_interval_seconds=self._check_interval
+        )
     
     async def start(self) -> None:
         """Start the scheduler"""
@@ -159,7 +166,9 @@ class SchedulerService:
                     if processed_count > 0:
                         logger.info("Processed due reminders", count=processed_count)
                 
+                logger.debug(f"Scheduler sleeping for {self._check_interval} seconds")
                 await asyncio.sleep(self._check_interval)
+                logger.debug("Scheduler woke up, checking again")
                 
             except asyncio.CancelledError:
                 break
@@ -191,7 +200,7 @@ class SchedulerService:
                 del self._scheduled_reminders[reminder.id]
     
     async def _execute_reminder(self, reminder: Reminder) -> None:
-        """Execute a reminder (placeholder for actual execution logic)"""
+        """Execute a reminder by delegating to ReminderService"""
         logger.info(
             "Executing reminder",
             reminder_id=reminder.id,
@@ -199,12 +208,14 @@ class SchedulerService:
             message_content=reminder.message_content
         )
         
-        # This is where the actual reminder execution would happen
-        # For now, we just log it. In a full implementation, this would:
-        # 1. Send the Discord message
-        # 2. Add reaction if validation required
-        # 3. Create validation record if needed
-        # 4. Update the reminder's next execution time
+        # Delegate to ReminderService to handle the actual execution
+        # The ReminderService.process_due_reminders() method is the proper way to execute reminders
+        # Individual reminder execution through the scheduler is not the primary execution path
+        # This method should primarily be used for logging and cleanup
+        
+        # Note: Individual scheduled reminders are mainly for precise timing
+        # The main execution happens through ReminderService.process_due_reminders()
+        # which is called from the scheduler loop
     
     def get_scheduler_status(self) -> Dict[str, Any]:
         """Get current scheduler status"""

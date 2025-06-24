@@ -76,13 +76,70 @@ class FufuRemindBot(commands.Bot):
                 validation_service=self.validation_service
             )
             
-            # Add commands to the command tree
-            self.tree.add_command(self.reminder_commands.add_reminder)
-            self.tree.add_command(self.reminder_commands.list_reminders)
-            self.tree.add_command(self.reminder_commands.delete_reminder)
-            self.tree.add_command(self.reminder_commands.pause_reminder)
-            self.tree.add_command(self.reminder_commands.resume_reminder)
-            self.tree.add_command(self.reminder_commands.stats)
+            # Add commands to the command tree by binding them properly
+            @self.tree.command(name="reminder_list", description="List your reminders")
+            @app_commands.describe(user="User to list reminders for (optional, admin only)")
+            async def reminder_list_command(interaction: discord.Interaction, user: Optional[discord.Member] = None):
+                logger.info("reminder_list command wrapper called", user_id=interaction.user.id)
+                try:
+                    await self.reminder_commands.list_reminders(interaction, user)
+                    logger.info("reminder_list command completed successfully")
+                except Exception as e:
+                    logger.error("Error in reminder_list command wrapper", error=str(e))
+                    raise
+            
+            @self.tree.command(name="reminder_add", description="Create a new reminder")
+            @app_commands.describe(
+                user="User to remind",
+                frequency="How often to send the reminder (spam, hourly, daily, weekly, monthly)",
+                message="The reminder message",
+                validation_required="Whether user must validate with ✅ reaction (default: False)"
+            )
+            async def reminder_add_command(interaction: discord.Interaction, user: discord.Member, frequency: str, message: str, validation_required: bool = False):
+                await self.reminder_commands.add_reminder(interaction, user, frequency, message, validation_required)
+            
+            @self.tree.command(name="reminder_delete", description="Delete a reminder")
+            @app_commands.describe(reminder_id="ID of the reminder to delete")
+            async def reminder_delete_command(interaction: discord.Interaction, reminder_id: int):
+                await self.reminder_commands.delete_reminder(interaction, reminder_id)
+            
+            @self.tree.command(name="reminder_pause", description="Pause a reminder")
+            @app_commands.describe(reminder_id="ID of the reminder to pause")
+            async def reminder_pause_command(interaction: discord.Interaction, reminder_id: int):
+                await self.reminder_commands.pause_reminder(interaction, reminder_id)
+            
+            @self.tree.command(name="reminder_resume", description="Resume a paused reminder")
+            @app_commands.describe(reminder_id="ID of the reminder to resume")
+            async def reminder_resume_command(interaction: discord.Interaction, reminder_id: int):
+                await self.reminder_commands.resume_reminder(interaction, reminder_id)
+            
+            @self.tree.command(name="reminder_stats", description="Show reminder statistics")
+            async def reminder_stats_command(interaction: discord.Interaction):
+                await self.reminder_commands.stats(interaction)
+            
+            # Add error handler for command tree
+            @self.tree.error
+            async def on_tree_error(interaction: discord.Interaction, error: app_commands.AppCommandError):
+                logger.error(
+                    "Command tree error",
+                    command=interaction.command.name if interaction.command else "unknown",
+                    user_id=interaction.user.id,
+                    error_type=type(error).__name__,
+                    error=str(error)
+                )
+                try:
+                    if not interaction.response.is_done():
+                        await interaction.response.send_message(
+                            "❌ An error occurred while processing your command. Please try again.",
+                            ephemeral=True
+                        )
+                    else:
+                        await interaction.followup.send(
+                            "❌ An error occurred while processing your command. Please try again.",
+                            ephemeral=True
+                        )
+                except Exception as e:
+                    logger.error("Error sending error message", error=str(e))
             
             logger.info("Slash commands registered successfully")
             
@@ -112,6 +169,10 @@ class FufuRemindBot(commands.Bot):
             
             # Update bot status
             await self.update_status()
+            
+            # Log registered commands for debugging
+            commands = [cmd.name for cmd in self.tree.get_commands()]
+            logger.info("Registered commands", commands=commands, command_count=len(commands))
             
             logger.info("Bot initialization complete")
             
@@ -227,6 +288,39 @@ class FufuRemindBot(commands.Bot):
         if self.reaction_observer:
             await self.reaction_observer.on_reaction_add(reaction, user)
     
+    async def on_interaction(self, interaction: discord.Interaction):
+        """Debug interaction events"""
+        logger.info(
+            "Received interaction",
+            type=interaction.type,
+            user_id=interaction.user.id,
+            user_name=interaction.user.name,
+            guild_id=interaction.guild.id if interaction.guild else None,
+            channel_id=interaction.channel.id if interaction.channel else None,
+            data=getattr(interaction, 'data', None)
+        )
+        
+        # Check if this is an application command
+        if interaction.type == discord.InteractionType.application_command:
+            command_name = interaction.data.get('name') if interaction.data else 'unknown'
+            logger.info(
+                "Processing application command",
+                command_name=command_name,
+                user_id=interaction.user.id
+            )
+            
+            # Check if command exists in tree
+            command = self.tree.get_command(command_name)
+            if command:
+                logger.info("Command found in tree", command_name=command_name)
+            else:
+                logger.error("Command NOT found in tree", command_name=command_name)
+                available_commands = [cmd.name for cmd in self.tree.get_commands()]
+                logger.info("Available commands", commands=available_commands)
+        
+        # Let the default discord.py handling process the interaction
+        # This is just for logging - discord.py will handle the command automatically
+    
     async def on_reaction_remove(self, reaction: discord.Reaction, user: discord.Member):
         """Handle reaction remove events"""
         if self.reaction_observer:
@@ -329,8 +423,8 @@ async def create_bot() -> FufuRemindBot:
         await db_manager.initialize()
         
         # Create repositories
-        reminder_repo = ReminderRepository(db_manager.get_session)
-        validation_repo = ValidationRepository(db_manager.get_session)
+        reminder_repo = ReminderRepository(await db_manager.get_session())
+        validation_repo = ValidationRepository(await db_manager.get_session())
         
         # Create services
         reminder_service = ReminderService(reminder_repo, validation_repo)
@@ -351,9 +445,11 @@ async def create_bot() -> FufuRemindBot:
             validation_service=validation_service
         )
         
-        # Inject services into bot
+        # Inject services into bot and other services
         bot.validation_service = validation_service
         bot.notification_service = notification_service
+        reminder_service.notification_service = notification_service
+        
         
         logger.info("Bot created successfully with all dependencies")
         return bot

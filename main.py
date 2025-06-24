@@ -43,41 +43,6 @@ class FufuRemindApplication:
         self.bot = None
         self.shutdown_event = asyncio.Event()
     
-    async def startup(self):
-        """Initialize and start the bot"""
-        try:
-            logger.info("🚀 Starting FufuRemind Discord Bot")
-            
-            # Validate configuration
-            settings = get_settings()
-            if not settings.discord_token:
-                logger.error("❌ DISCORD_TOKEN not found in environment variables")
-                logger.error("Please set DISCORD_TOKEN in config/.env file")
-                return False
-            
-            logger.info("✅ Configuration validated")
-            
-            # Create and configure bot
-            self.bot = await create_bot()
-            logger.info("✅ Bot instance created with all dependencies")
-            
-            # Set up signal handlers for graceful shutdown
-            self._setup_signal_handlers()
-            
-            # Start the bot
-            logger.info("🔗 Connecting to Discord...")
-            
-            # Run the bot with proper error handling
-            await self.bot.run_bot()
-            
-            return True
-            
-        except KeyboardInterrupt:
-            logger.info("⚠️ Keyboard interrupt received")
-            return True
-        except Exception as e:
-            logger.error("💥 Failed to start bot", error=str(e))
-            return False
     
     async def shutdown(self):
         """Gracefully shutdown the bot"""
@@ -107,30 +72,73 @@ class FufuRemindApplication:
         """Set up signal handlers for graceful shutdown"""
         def signal_handler(signum, frame):
             logger.info(f"📡 Received signal {signum}")
-            self.shutdown_event.set()
+            # Use asyncio to safely set the event from the signal handler
+            loop = asyncio.get_event_loop()
+            loop.call_soon_threadsafe(self.shutdown_event.set)
         
         signal.signal(signal.SIGINT, signal_handler)
         signal.signal(signal.SIGTERM, signal_handler)
     
     async def run(self):
         """Main application run loop"""
+        bot_task = None
         try:
-            # Start the application
-            startup_success = await self.startup()
+            # Create and configure bot
+            logger.info("🚀 Starting FufuRemind Discord Bot")
             
-            if not startup_success:
-                logger.error("❌ Failed to start application")
+            # Validate configuration
+            settings = get_settings()
+            if not settings.discord_token:
+                logger.error("❌ DISCORD_TOKEN not found in environment variables")
+                logger.error("Please set DISCORD_TOKEN in config/.env file")
                 return 1
             
-            # Wait for shutdown signal
-            await self.shutdown_event.wait()
+            # Debug: Log token info (first/last 10 chars for security)
+            token = settings.discord_token
+            logger.info(f"🔑 Token loaded: {token[:10]}...{token[-10:]} (length: {len(token)})")
             
+            logger.info("✅ Configuration validated")
+            
+            # Create and configure bot
+            self.bot = await create_bot()
+            logger.info("✅ Bot instance created with all dependencies")
+            
+            # Set up signal handlers for graceful shutdown
+            self._setup_signal_handlers()
+            
+            # Start the bot as a task
+            logger.info("🔗 Connecting to Discord...")
+            bot_task = asyncio.create_task(self.bot.run_bot())
+            
+            # Wait for shutdown signal or bot task completion
+            done, pending = await asyncio.wait(
+                [bot_task, asyncio.create_task(self.shutdown_event.wait())],
+                return_when=asyncio.FIRST_COMPLETED
+            )
+            
+            # Cancel any remaining tasks
+            for task in pending:
+                task.cancel()
+                try:
+                    await task
+                except asyncio.CancelledError:
+                    pass
+            
+        except KeyboardInterrupt:
+            logger.info("⚠️ Keyboard interrupt received")
+            return 0
         except Exception as e:
             logger.error("💥 Unexpected error in main loop", error=str(e))
             return 1
         
         finally:
             # Always attempt graceful shutdown
+            if bot_task and not bot_task.done():
+                bot_task.cancel()
+                try:
+                    await bot_task
+                except asyncio.CancelledError:
+                    pass
             await self.shutdown()
         
         return 0

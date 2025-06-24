@@ -52,8 +52,11 @@ class Reminder:
     
     def update_next_execution(self) -> None:
         """Update next execution time to the next interval"""
-        self.next_execution = self._calculate_next_execution(self.next_execution)
-        self.updated_at = datetime.utcnow()
+        current_time = datetime.utcnow()
+        # If the reminder is overdue, calculate from current time, otherwise from next_execution
+        base_time = max(current_time, self.next_execution)
+        self.next_execution = self._calculate_next_execution(base_time)
+        self.updated_at = current_time
     
     def is_due_for_execution(self, current_time: Optional[datetime] = None) -> bool:
         """Check if the reminder is due for execution"""

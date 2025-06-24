@@ -19,13 +19,6 @@ class ReminderCommands:
         self.reminder_service = reminder_service
         self.notification_service = notification_service
     
-    @app_commands.command(name="reminder_add", description="Create a new reminder")
-    @app_commands.describe(
-        user="User to remind",
-        frequency="How often to send the reminder (hourly, daily, weekly, monthly)",
-        message="The reminder message",
-        validation_required="Whether user must validate with ✅ reaction (default: False)"
-    )
     async def add_reminder(
         self,
         interaction: discord.Interaction,
@@ -35,6 +28,14 @@ class ReminderCommands:
         validation_required: bool = False
     ):
         """Create a new reminder"""
+        logger.info(
+            "Processing reminder_add command", 
+            user_id=interaction.user.id,
+            target_user_id=user.id,
+            frequency=frequency,
+            message_preview=message[:50] + "..." if len(message) > 50 else message,
+            validation_required=validation_required
+        )
         try:
             # Check permissions
             if not await self._check_admin_permissions(interaction):
@@ -48,7 +49,7 @@ class ReminderCommands:
             frequency_enum = self._validate_frequency(frequency.lower())
             if not frequency_enum:
                 await interaction.response.send_message(
-                    "❌ Invalid frequency. Use: hourly, daily, weekly, or monthly",
+                    "❌ Invalid frequency. Use: spam, hourly, daily, weekly, or monthly",
                     ephemeral=True
                 )
                 return
@@ -108,14 +109,17 @@ class ReminderCommands:
                 ephemeral=True
             )
     
-    @app_commands.command(name="reminder_list", description="List your reminders")
-    @app_commands.describe(user="User to list reminders for (optional, admin only)")
     async def list_reminders(
         self,
         interaction: discord.Interaction,
         user: Optional[discord.Member] = None
     ):
         """List reminders for a user"""
+        logger.info(
+            "Processing reminder_list command",
+            user_id=interaction.user.id,
+            target_user_id=user.id if user else "self"
+        )
         try:
             # Determine target user
             target_user = user if user else interaction.user
@@ -155,8 +159,6 @@ class ReminderCommands:
                 ephemeral=True
             )
     
-    @app_commands.command(name="reminder_delete", description="Delete a reminder")
-    @app_commands.describe(reminder_id="ID of the reminder to delete")
     async def delete_reminder(
         self,
         interaction: discord.Interaction,
@@ -213,8 +215,6 @@ class ReminderCommands:
                 ephemeral=True
             )
     
-    @app_commands.command(name="reminder_pause", description="Pause a reminder")
-    @app_commands.describe(reminder_id="ID of the reminder to pause")
     async def pause_reminder(
         self,
         interaction: discord.Interaction,
@@ -229,8 +229,6 @@ class ReminderCommands:
             "pause"
         )
     
-    @app_commands.command(name="reminder_resume", description="Resume a paused reminder")
-    @app_commands.describe(reminder_id="ID of the reminder to resume")
     async def resume_reminder(
         self,
         interaction: discord.Interaction,
@@ -245,7 +243,6 @@ class ReminderCommands:
             "resume"
         )
     
-    @app_commands.command(name="reminder_stats", description="Show reminder statistics")
     async def stats(self, interaction: discord.Interaction):
         """Show reminder statistics"""
         try:
@@ -348,6 +345,7 @@ class ReminderCommands:
     def _validate_frequency(self, frequency: str) -> Optional[FrequencyEnum]:
         """Validate and convert frequency string to enum"""
         frequency_map = {
+            "spam": FrequencyEnum.SPAM,
             "hourly": FrequencyEnum.HOURLY,
             "daily": FrequencyEnum.DAILY,
             "weekly": FrequencyEnum.WEEKLY,

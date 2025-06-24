@@ -25,7 +25,7 @@ class LimitsConfig(BaseModel):
 
 
 class SchedulingConfig(BaseModel):
-    check_interval_minutes: int = 5
+    check_interval_minutes: float = 0.5  # 30 seconds for spam reminders
     max_concurrent_reminders: int = 100
 
 
@@ -61,6 +61,8 @@ class Settings(BaseSettings):
     def parse_admin_role_ids(cls, v):
         if isinstance(v, str):
             return [int(role_id.strip()) for role_id in v.split(",") if role_id.strip()]
+        elif isinstance(v, int):
+            return [v]  # Convert single int to list
         return v
     
     @field_validator("validation_timeout_hours")
@@ -71,26 +73,28 @@ class Settings(BaseSettings):
         return v
     
     model_config = {
-        "env_file": "config/.env",
+        "env_file": Path(__file__).parent.parent.parent / "config" / ".env",
         "env_file_encoding": "utf-8",
         "case_sensitive": False
     }
         
     @classmethod
     def load_from_config_file(cls, config_file: Path = Path("config/config.json")):
-        """Load additional configuration from JSON file"""
+        """Load configuration from environment and optionally from JSON file"""
+        # First create settings with environment variables (this loads .env file automatically)
+        settings = cls()
+        
+        # Then optionally override with JSON config if it exists
         if config_file.exists():
             with open(config_file, "r") as f:
                 config_data = json.load(f)
                 
-            settings = cls()
             settings.bot = BotConfig(**config_data.get("bot", {}))
             settings.features = FeatureConfig(**config_data.get("features", {}))
             settings.limits = LimitsConfig(**config_data.get("limits", {}))
             settings.scheduling = SchedulingConfig(**config_data.get("scheduling", {}))
             
-            return settings
-        return cls()
+        return settings
 
 
 # Global settings instance - will be initialized when needed
@@ -102,9 +106,11 @@ def get_settings() -> Settings:
     if settings is None:
         try:
             settings = Settings.load_from_config_file()
-        except Exception:
+        except Exception as e:
             # For testing or when config is not available, create minimal settings
             import os
+            print(f"DEBUG: Exception loading settings: {e}")
+            print(f"DEBUG: DISCORD_TOKEN from os.getenv: {os.getenv('DISCORD_TOKEN', 'NOT_FOUND')}")
             settings = Settings(
                 discord_token=os.getenv("DISCORD_TOKEN", "test_token"),
                 reminder_channel_id=int(os.getenv("REMINDER_CHANNEL_ID", "123456789")),

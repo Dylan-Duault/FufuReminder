@@ -2,6 +2,7 @@ from enum import Enum
 
 
 class FrequencyEnum(str, Enum):
+    SPAM = "spam"
     HOURLY = "hourly"
     DAILY = "daily"
     WEEKLY = "weekly"

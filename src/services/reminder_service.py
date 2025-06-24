@@ -18,11 +18,13 @@ class ReminderService:
         self,
         reminder_repo: ReminderRepository,
         validation_repo: ValidationRepository,
-        scheduler_service=None  # Optional to avoid circular imports
+        scheduler_service=None,  # Optional to avoid circular imports
+        notification_service=None  # Optional notification service
     ):
         self.reminder_repo = reminder_repo
         self.validation_repo = validation_repo
         self.scheduler_service = scheduler_service
+        self.notification_service = notification_service
         self.settings = get_settings()
     
     async def create_reminder(
@@ -155,17 +157,52 @@ class ReminderService:
     
     async def process_due_reminders(self) -> int:
         """Process all reminders that are due for execution"""
+        from datetime import datetime
+        current_time = datetime.utcnow()
+        logger.debug("Checking for due reminders...", current_time=current_time)
         due_reminders = await self.reminder_repo.find_due_reminders()
+        logger.info(f"Found {len(due_reminders)} due reminders", current_time=current_time)
+        
+        # Debug: Check all active reminders and their next execution times
+        all_reminders = await self.reminder_repo.find_active_reminders()
+        for reminder in all_reminders:
+            is_due = reminder.next_execution <= current_time
+            logger.debug(
+                "Reminder check",
+                reminder_id=reminder.id,
+                next_execution=reminder.next_execution,
+                current_time=current_time,
+                is_due=is_due,
+                time_diff_seconds=(current_time - reminder.next_execution).total_seconds()
+            )
+        
         processed_count = 0
         
         for reminder_model in due_reminders:
             try:
+                logger.info(
+                    "Processing reminder",
+                    reminder_id=reminder_model.id,
+                    user_id=reminder_model.user_id,
+                    frequency=reminder_model.frequency,
+                    next_execution=reminder_model.next_execution,
+                    message_preview=reminder_model.message_content[:50]
+                )
+                
                 # Send the reminder notification
                 await self._send_reminder_notification(reminder_model)
                 
                 # Update next execution time
                 domain_reminder = self._model_to_domain(reminder_model)
+                old_next_execution = domain_reminder.next_execution
                 domain_reminder.update_next_execution()
+                
+                logger.info(
+                    "Updated reminder execution time",
+                    reminder_id=reminder_model.id,
+                    old_next_execution=old_next_execution,
+                    new_next_execution=domain_reminder.next_execution
+                )
                 
                 await self.reminder_repo.update_next_execution(
                     reminder_model.id,
@@ -249,15 +286,32 @@ class ReminderService:
         return updated_count
     
     async def _send_reminder_notification(self, reminder_model: ReminderModel) -> None:
-        """Send reminder notification (placeholder for Discord integration)"""
-        # This will be implemented when we create the notification service
-        # For now, just log the action
+        """Send reminder notification via NotificationService"""
         logger.info(
-            "Sending reminder notification",
+            "Attempting to send reminder notification",
             reminder_id=reminder_model.id,
             user_id=reminder_model.user_id,
-            message_content=reminder_model.message_content
+            channel_id=reminder_model.channel_id,
+            message_content=reminder_model.message_content,
+            notification_service_available=self.notification_service is not None
         )
+        
+        if not self.notification_service:
+            logger.warning("No notification service available - cannot send reminder")
+            return
+        
+        # Convert to domain model
+        domain_reminder = self._model_to_domain(reminder_model)
+        
+        # Send via notification service
+        try:
+            success = await self.notification_service.send_reminder(domain_reminder)
+            if success:
+                logger.info("Reminder notification sent successfully", reminder_id=reminder_model.id)
+            else:
+                logger.error("Failed to send reminder notification", reminder_id=reminder_model.id)
+        except Exception as e:
+            logger.error("Error sending reminder notification", reminder_id=reminder_model.id, error=str(e))
     
     def _model_to_domain(self, model: ReminderModel) -> Reminder:
         """Convert database model to domain model"""

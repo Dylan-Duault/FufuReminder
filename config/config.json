@@ -16,7 +16,7 @@
     "command_cooldown_seconds": 5
   },
   "scheduling": {
-    "check_interval_minutes": 5,
+    "check_interval_minutes": 1,
     "max_concurrent_reminders": 100
   }
 }
