@@ -1,0 +1,22 @@
+{
+  "bot": {
+    "command_prefix": "/",
+    "description": "FufuRemind - Enterprise Discord Reminder Bot",
+    "status": "Managing reminders",
+    "activity_type": "watching"
+  },
+  "features": {
+    "auto_kick_enabled": true,
+    "reaction_validation": true,
+    "reminder_persistence": true
+  },
+  "limits": {
+    "max_reminders_per_user": 10,
+    "max_message_length": 2000,
+    "command_cooldown_seconds": 5
+  },
+  "scheduling": {
+    "check_interval_minutes": 5,
+    "max_concurrent_reminders": 100
+  }
+}
