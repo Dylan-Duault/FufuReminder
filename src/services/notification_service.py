@@ -33,11 +33,11 @@ class NotificationService:
                 self._failed_count += 1
                 return False
             
-            # Format the reminder message
-            message_content = self._format_reminder_message(reminder)
+            # Create the reminder embed
+            embed = self._create_reminder_embed(reminder)
             
-            # Send the message
-            message = await channel.send(message_content)
+            # Send the message with embed
+            message = await channel.send(content=f"<@{reminder.user_id}>", embed=embed)
             
             logger.info(
                 "Reminder message sent",
@@ -122,28 +122,52 @@ class NotificationService:
             )
             return False
     
-    def _format_reminder_message(self, reminder: Reminder) -> str:
-        """Format a reminder message for Discord"""
+    def _create_reminder_embed(self, reminder: Reminder) -> discord.Embed:
+        """Create a modern Discord embed for reminder messages"""
         # Sanitize message content
         sanitized_content = self._sanitize_message_content(reminder.message_content)
         
-        # Base message with user mention
-        message_parts = [
-            f"🔔 **Reminder for <@{reminder.user_id}>**",
-            f"📝 {sanitized_content}",
-            f"⏰ This is your **{reminder.frequency.value}** reminder"
-        ]
+        # Create the embed with a nice color
+        embed = discord.Embed(
+            title="🔔 Reminder Notification",
+            description=f"**{sanitized_content}**",
+            color=0x3498db,  # Nice blue color
+            timestamp=datetime.utcnow()
+        )
         
-        # Add validation instructions if required
+        # Add frequency field
+        frequency_emoji = {
+            "spam": "⚡",
+            "hourly": "🕐", 
+            "daily": "📅",
+            "weekly": "📆",
+            "monthly": "🗓️"
+        }
+        
+        embed.add_field(
+            name="Frequency",
+            value=f"{frequency_emoji.get(reminder.frequency.value, '🔁')} {reminder.frequency.value.title()}",
+            inline=True
+        )
+        
+        # Add reminder ID for reference
+        embed.add_field(
+            name="Reminder ID",
+            value=f"#{reminder.id}",
+            inline=True
+        )
+        
+        # Add validation field if required
         if reminder.validation_required:
-            message_parts.extend([
-                "",
-                "⚠️ **Validation Required**",
-                "React with ✅ within 48 hours to confirm you've seen this reminder.",
-                "Failure to validate will result in removal from the server."
-            ])
+            embed.add_field(
+                name="⚠️ Validation Required",
+                value="React with ✅ within 48 hours to confirm you've seen this reminder.\nFailure to validate will result in removal from the server.",
+                inline=False
+            )
         
-        return "\n".join(message_parts)
+        embed.set_footer(text="FufuRemind Bot")
+        
+        return embed
     
     def _sanitize_message_content(self, content: str) -> str:
         """Sanitize message content to prevent Discord markdown injection"""

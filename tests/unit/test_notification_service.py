@@ -169,37 +169,39 @@ class TestNotificationService:
         channel.send.assert_called_once()
     
     @pytest.mark.asyncio
-    async def test_format_reminder_message_basic(self, notification_service, sample_reminder):
-        """Test basic reminder message formatting"""
+    async def test_create_reminder_embed_basic(self, notification_service, sample_reminder):
+        """Test basic reminder embed creation"""
         # Arrange
         sample_reminder.validation_required = False
         
         # Act
-        message = notification_service._format_reminder_message(sample_reminder)
+        embed = notification_service._create_reminder_embed(sample_reminder)
         
         # Assert
-        assert "Daily standup reminder" in message
-        assert f"<@{sample_reminder.user_id}>" in message
-        assert "daily" in message.lower()
+        assert embed.title == "🔔 Reminder Notification"
+        assert "Daily standup reminder" in embed.description
+        assert "daily" in embed.fields[0].value.lower()
+        assert embed.color.value == 0x3498db
     
     @pytest.mark.asyncio
-    async def test_format_reminder_message_with_validation(self, notification_service, sample_reminder):
-        """Test reminder message formatting with validation requirement"""
+    async def test_create_reminder_embed_with_validation(self, notification_service, sample_reminder):
+        """Test reminder embed creation with validation requirement"""
         # Arrange
         sample_reminder.validation_required = True
         
         # Act
-        message = notification_service._format_reminder_message(sample_reminder)
+        embed = notification_service._create_reminder_embed(sample_reminder)
         
         # Assert
-        assert "Daily standup reminder" in message
-        assert f"<@{sample_reminder.user_id}>" in message
-        assert "React with ✅" in message
-        assert "48 hours" in message
+        assert embed.title == "🔔 Reminder Notification"
+        assert "Daily standup reminder" in embed.description
+        validation_field = next(field for field in embed.fields if "Validation Required" in field.name)
+        assert "React with ✅" in validation_field.value
+        assert "48 hours" in validation_field.value
     
     @pytest.mark.asyncio
-    async def test_format_reminder_message_different_frequencies(self, notification_service, sample_reminder):
-        """Test message formatting for different frequencies"""
+    async def test_create_reminder_embed_different_frequencies(self, notification_service, sample_reminder):
+        """Test embed creation for different frequencies"""
         frequencies = [
             (FrequencyEnum.HOURLY, "hourly"),
             (FrequencyEnum.DAILY, "daily"),
@@ -212,10 +214,11 @@ class TestNotificationService:
             sample_reminder.frequency = frequency
             
             # Act
-            message = notification_service._format_reminder_message(sample_reminder)
+            embed = notification_service._create_reminder_embed(sample_reminder)
             
             # Assert
-            assert expected_text in message.lower()
+            frequency_field = next(field for field in embed.fields if field.name == "Frequency")
+            assert expected_text in frequency_field.value.lower()
     
     @pytest.mark.asyncio
     async def test_send_multiple_reminders(self, notification_service, mock_discord_client):
@@ -359,17 +362,16 @@ class TestNotificationService:
             expected_expiry = fixed_time + timedelta(hours=48)
             assert expires_at == expected_expiry
     
-    def test_message_formatting_escapes_markdown(self, notification_service, sample_reminder):
-        """Test that message formatting properly escapes Discord markdown"""
+    def test_embed_formatting_escapes_markdown(self, notification_service, sample_reminder):
+        """Test that embed formatting properly escapes Discord markdown"""
         # Arrange
         sample_reminder.message_content = "**Bold** *italic* `code` @everyone"
         
         # Act
-        message = notification_service._format_reminder_message(sample_reminder)
+        embed = notification_service._create_reminder_embed(sample_reminder)
         
         # Assert
         # Should sanitize @everyone mentions to [@everyone]
-        assert "[@everyone]" in message  # Should be escaped to [@everyone]
+        assert "[@everyone]" in embed.description  # Should be escaped to [@everyone]
         # Should not contain the original unescaped @everyone
-        content_line = [line for line in message.split('\n') if '**Bold**' in line][0]
-        assert "[@everyone]" in content_line and "@everyone" not in content_line.replace("[@everyone]", "")
+        assert "[@everyone]" in embed.description and "@everyone" not in embed.description.replace("[@everyone]", "")

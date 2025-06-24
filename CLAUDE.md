@@ -124,10 +124,16 @@ python3 -m mypy src/
 ### Reminder Lifecycle
 1. Admin creates reminder via `/reminder add`
 2. Bot schedules execution using asyncio
-3. Message sent to configured channel at interval
-4. If validation required, bot adds ✅ reaction
+3. Modern Discord embed message sent to configured channel at interval
+4. If validation required, bot adds ✅ reaction to embed
 5. 48h timeout starts for user validation
 6. User kicked if no validation received
+
+### Message Format
+- **Modern Discord Embeds**: All reminder messages use rich embeds with color coding
+- **User-friendly Design**: Clean layout with frequency-specific emojis and proper formatting
+- **Consistent Branding**: Matches statistics embed style with footer branding
+- **Enhanced UX**: Professional appearance compared to plain text messages
 
 ### Testing Strategy
 - **Unit Tests**: Individual components in isolation
